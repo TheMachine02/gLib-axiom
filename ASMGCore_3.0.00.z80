@@ -5,7 +5,7 @@
 
 ;1
 ;gInit
-	.dw	_gInitEnd + 2
+   	.dw	_gInitEnd + 2
 	.db	%00011111
 	.db	62h, 02h
 	.db	AXM_SUB
