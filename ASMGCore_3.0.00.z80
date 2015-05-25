@@ -1,0 +1,2482 @@
+#define	gCOMPILE_AXM
+#include	"ASMGCore_3.0.00.inc"
+
+	.dw	$C0DE
+
+;1
+;gInit
+	.dw	_gInitEnd + 2
+	.db	%00011111
+	.db	62h, 02h
+	.db	AXM_SUB
+	.db	AXM_0ARGS
+	.org	$0
+; all vars init
+	ld	hl, gLIBBUFFER
+	ld	de, gLIBBUFFER + 1
+	ld	bc, 767
+	ld	(hl), 0
+	ldir
+; vbo	
+	.db $7F \ .org $-1
+	ld	hl, _gVBOString
+	ld	de, gVBOName
+	ld	bc, 5
+	ldir
+	ld	hl, 6
+	ld	(gArrayOffset), hl
+; texture
+	.db	$7F \ .org $-1
+	ld	hl, _gTextString
+	ld	de, gTextName
+	ld	bc, 6
+	ldir
+; matrix
+	call	sub_gLoadIdentity
+; stencil
+	ld	hl, $9872			;L3
+	ld	(gStencilBuff), hl
+; sin table
+	ld	hl,gSin
+_gSinLoop:
+	push	hl
+	ld	a, l
+	sub	64
+	ld	l, a
+	call	sub_Sin
+	ld	a, l
+	sra	a
+	pop	hl
+	ld	(hl), a
+	inc	l
+	jr	nz, _gSinLoop
+; geom shader
+	ld	hl, 32896
+	ld	(gRasterTable - $2), hl
+; version
+	ld	hl, gVERSION
+	di
+	ret
+_gVBOString:
+	.db	22,"GVBO"
+_gTextString:
+	.db	22,"GTEXT"
+_gInitEnd:
+
+;2
+;gEnable(flags)
+	.dw	_gEnableEnd
+	.db	%00011111
+	.db	62h, 06h
+	.db	AXM_INLINE
+	.db	AXM_1ARGS
+	.org	$0
+	ld	a, l
+	or	(iy+gFLAGS)
+	ld	(iy+gFLAGS), a
+_gEnableEnd:
+
+;3
+;gDisable(flags)
+	.dw	_gDisableEnd
+	.db	%00011111
+	.db	62h, 07h
+	.db	AXM_INLINE
+	.db	AXM_1ARGS
+	.org	$0
+	ld	a, l
+	cpl
+	and	(iy+gFLAGS)
+	ld	(iy+gFLAGS), a	
+_gDisableEnd:
+
+;4
+;gFastMath(void)
+	.dw	_gFastMathEnd + 1
+	.db	%00011111
+	.db	62h, 03h
+	.db	AXM_SUB
+	.db	AXM_0ARGS
+	.org	$0
+	ld	hl, -128
+	ld	b, 0
+_gInitMultBuff:
+	push	bc
+	push	hl
+	ld	d, h
+	ld	e, l
+	call	sub_Mul
+	add	hl, hl	
+	ld	a, h
+	pop	hl
+	ld	b, gMulTable/256
+	ld	c, l
+	ld	(bc), a
+	inc	hl
+	pop	bc
+	djnz	_gInitMultBuff
+	.db $7F \ .org $-1
+	ld	hl, _gFastMathShader
+	ld	(gVertexCall), hl
+	ret
+_gFastMathShader:
+	ld	de, (gtmpInStream)
+	ld	hl, (gArrayOffset)
+	add	hl, de
+	ld	(gtmpInStream), hl
+	ex	de, hl
+	call	sub_fast_gRotate
+	jp	sub_fast_gProject
+_gFastMathEnd:
+
+;5
+;gLoadIdentity
+	.dw	_gLoadIdentityEnd
+	.db	00011111b
+	.db	62h, 0Ch
+	.db	AXM_SUB
+	.db	AXM_0ARGS
+	.org	$0
+	xor	a
+	ld	l, a
+	ld	h, a
+	ld	(gMatrix+$1), hl
+	ld	(gMatrix+$3), a
+	ld	(gMatrix+$5), hl
+	ld	(gMatrix+$7), a
+	ld	(gMatrix+$9), hl
+	ld	(gMatrix+$B), hl
+	ld	(gMatrix+$D), hl
+	ld	a, 64
+	ld	(gMatrix+$0), a
+	ld	(gMatrix+$4), a
+	ld	(gMatrix+$8), a
+	ret
+_gLoadIdentityEnd:
+
+;6
+;gLoadScale
+	.dw	_gLoadScaleEnd
+	.db	%00011111
+	.db	62h, 0Fh
+	.db	AXM_SUB
+	.db	AXM_1ARGS
+	.org	$0
+	ex	de, hl
+; reset matrix
+	call	sub_gLoadIdentity
+	ld	a, (de)
+	inc	de
+	ld	(gMatrix+$0), a
+	ld	a, (de)
+	inc	de
+	ld	(gMatrix+$4), a
+	ld	a, (de)
+	ld	(gMatrix+$8), a
+	ret
+_gLoadScaleEnd:
+
+;7
+;gPushMatrix
+	.dw	_gPushMatrixEnd
+	.db	%00011111
+	.db	62h, 10h
+	.db	AXM_SUB
+	.db	AXM_0ARGS
+	.org	$0
+	pop	de
+	ld	hl, (gMatrix+$0)
+	push	hl
+	ld	hl, (gMatrix+$2)
+	push	hl
+	ld	hl, (gMatrix+$4)
+	push	hl
+	ld	hl, (gMatrix+$6)
+	push	hl
+	ld	hl, (gMatrix+$8)
+	push	hl
+	ld	hl, (gMatrix+$A)
+	push	hl
+	ld	hl, (gMatrix+$C)
+	push	hl
+	ld	a, (gMatrix+$E)
+	push	af
+	ex	de, hl
+	jp	(hl)
+_gPushMatrixEnd:
+
+;8
+;gPopMatrix
+	.dw	_gPopMatrixEnd
+	.db	%00011111
+	.db	62h, 08h
+	.db	AXM_SUB
+	.db	AXM_0ARGS
+	.org	$0
+	pop	de
+	pop	af
+	ld	(gMatrix+$E), a
+	pop	hl
+	ld	(gMatrix+$C), hl
+	pop	hl
+	ld	(gMatrix+$A), hl
+	pop	hl
+	ld	(gMatrix+$8), hl
+	pop	hl
+	ld	(gMatrix+$6), hl
+	pop	hl
+	ld	(gMatrix+$4), hl
+	pop	hl
+	ld	(gMatrix+$2), hl
+	pop	hl
+	ld	(gMatrix+$0), hl
+	ex	de, hl
+	jp	(hl)
+_gPopMatrixEnd:
+
+;9
+;gAngle
+	.dw	_gAngleEnd
+	.db	%00011111
+	.db	62h, 09h
+	.db	AXM_SUB
+	.db	AXM_1ARGS
+	.org	$0
+	ld	b, h
+	ld	c, l
+; angle y=c, x=b
+	ld	h, gSin/256
+	ld	e, 64
+
+	ld	a, c
+	add	a, e
+	ld	l, a
+	ld	a, (hl)
+	ld	(gMatrix+$0), a
+	xor	a
+	ld	(gMatrix+$1), a
+	ld	l, c
+	ld	a, (hl)
+	ld	(gMatrix+$2), a
+
+	ld	a, b
+	add	a, c
+	add	a, e
+	ld	l, a
+	ld	d, (hl)
+	sub	c
+	sub	c
+	ld	l, a
+	ld	a, (hl)
+	sub	d
+	sra	a
+	ld	(gMatrix+$3), a
+
+	ld	a, b
+	add	a, e
+	ld	l, a
+	ld	a, (hl)
+	ld	(gMatrix+$4), a
+	
+	ld	a, b
+	add	a, c
+	ld	l, a
+	ld	d, (hl)
+	sub	c
+	sub	c
+	ld	l, a
+	ld	a, (hl)
+	add	a, d
+	sra	a
+	neg
+	ld	(gMatrix+$5), a
+
+	ld	a, b
+	add	a, c
+	ld	l, a
+	ld	d, (hl)
+	sub	c
+	sub	c
+	ld	l, a
+	ld	a, (hl)
+	sub 	d
+	sra	a
+	ld	(gMatrix+$6), a
+	
+	ld	l, b
+	ld	a, (hl)
+	ld	(gMatrix+$7), a
+	
+	ld	a, b
+	add	a, c
+	add	a, e
+	ld	l, a
+	ld	d, (hl)
+	sub	c
+	sub	c
+	ld	l, a
+	ld	a, (hl)
+	add	a, d
+	sra	a
+	ld	(gMatrix+$8), a
+	ret
+_gAngleEnd:
+
+;10
+;gTranslate
+	.dw	_gTranslateEnd
+	.db	%00011111
+	.db	62h, 0Ah
+	.db	AXM_SUB
+	.db	AXM_1ARGS
+	.org	$0
+	ex	de, hl
+	ld	a, (de)
+	ld	c, a
+	inc	de
+	ld	a, (de)
+	ld	b, a	
+; translate X
+	ld	hl, (gMatrix+$9)
+	add	hl, bc
+	ld	(gMatrix+$9), hl
+	inc	de
+; translate Y
+	ld	a, (de)
+	ld	c, a
+	inc	de
+	ld	a, (de)
+	ld	b, a	
+	ld	hl, (gMatrix+$B)
+	add	hl, bc
+	ld	(gMatrix+$B), hl
+	inc	de
+; translate Z
+	ld	a, (de)
+	ld	c, a
+	inc	de
+	ld	a, (de)
+	ld	b, a	
+	ld	hl, (gMatrix+$D)
+	add	hl, bc
+	ld	(gMatrix+$D), hl
+	ret
+_gTranslateEnd:
+
+;11
+;gTranspose
+	.dw	_gTransposeEnd
+	.db	%00011111
+	.db	62h, 0Bh
+	.db	AXM_SUB
+	.db	AXM_1ARGS
+	.org	$0
+	;0,1,2
+	;3,4,5
+	;6,7,8
+; converted to :
+	;0,3,6
+	;1,4,7
+	;2,5,8
+	push	hl
+	pop	ix
+	ld	a, (ix+$3)
+	ld	c, a
+	ld	a, (ix+$1)
+	ld	(ix+$3), a
+	ld	a, c
+	ld	(ix+$1), a
+	ld	a, (ix+$6)
+	ld	c, a
+	ld	a, (ix+$2)
+	ld	(ix+$6), a
+	ld	a, c
+	ld	(ix+$2), a
+	ld	a, (ix+$7)
+	ld	c, a
+	ld	a, (ix+$5)
+	ld	(ix+$7), a
+	ld	a, c
+	ld	(ix+$5), a
+	ret
+_gTransposeEnd:
+
+;13
+;gRotate(16vec3)
+	.dw	_gRotateEnd
+	.db	%00011111
+	.db	62h, 04h
+	.db	AXM_SUB
+	.db	AXM_1ARGS
+	.org	$0
+; ~2700 TStates, HL is vector
+; multiply the given vector by the current matrix
+	ld	c, (hl)
+	inc	hl
+	ld	b, (hl)
+	inc	hl
+	ld	e, (hl)
+	inc	hl
+	ld	d, (hl)
+	inc	hl
+	push	hl
+	ld	hl, 0
+	ld	a, (gMatrix+$0)
+	or	a
+	call	nz, _gFMulEntry
+	ex	de, hl
+	ld	a, (gMatrix+$1)
+	or	a
+	jr	z, _gSkipElement2
+	call	_gFMulHLxA
+	add	hl, de
+	ex	de, hl
+_gSkipElement2:	
+	pop	hl
+	ld	c, (hl)
+	inc	hl
+	ld	b, (hl)
+	push	hl
+	ld	a, (gMatrix+$2)
+	or	a
+	jr	z, _gSkipElement3
+	call	_gFMulBCxA
+	add	hl, de
+	ex	de, hl
+_gSkipElement3:
+	ld	hl, (gMatrix+$9)
+	;sra d \ rr e
+	add	hl, de
+	ld	(gPositionX), hl
+	pop	hl
+	ld	b, (hl)
+	dec	hl
+	ld	c, (hl)
+	dec	hl
+	push	bc
+	ld	d, (hl)
+	dec	hl
+	ld	e, (hl)
+	push	de
+	dec	hl
+	push	hl
+	ld	a, (gMatrix+$5)
+	ld	hl, 0
+	or	a
+	call	nz, _gFMulEntry
+	ex	de, hl
+	ld	a,(gMatrix+$4)
+	or	a
+	jr	z, _gSkipElement5
+	call	_gFMulHLxA
+	add	hl, de
+	ex	de, hl
+_gSkipElement5:
+	pop	hl
+	ld	b, (hl)
+	dec	hl
+	ld	c, (hl)
+	push	bc
+	ld	a, (gMatrix+$3)
+	or	a
+	jr	z, _gSkipElement4
+	call	_gFMulBCxA
+	add	hl, de
+	ex	de, hl
+_gSkipElement4:	
+	ld	hl, (gMatrix+$B)
+	;sra	d \ rr e
+	add	hl, de
+	ld	(gPositionY), hl
+	pop	bc
+	ld	hl, 0
+	ld	a, (gMatrix+$6)
+	or	a
+	call	nz, _gFMulEntry
+	ex	de, hl
+	pop	bc
+	ld	a,(gMatrix+$7)
+	or	a
+	jr	z, _gSkipElement8
+	call	_gFMulBCxA
+	add	hl, de
+	ex	de, hl
+_gSkipElement8:
+	pop	bc
+	ld	a, (gMatrix+$8)
+	or	a
+	jr	z, _gSkipElement9
+	call	_gFMulBCxA
+	add	hl, de
+	ex	de, hl
+_gSkipElement9:
+	ld	hl, (gMatrix+$D)
+	;sra	d \ rr e
+	add	hl, de
+	ld	(gPositionZ), hl
+	ret
+_gFMulHLxA:
+	ld	b, h
+	ld	c, l
+_gFMulBCxA:
+	ld	hl, 0
+_gFMulEntry:
+	rra \ jr nc, $+8 \ ld h, b \ ld l, c  \ sra h \ rr l
+	rra \ jr nc, $+3 \ add hl, bc \ sra h \ rr l
+	rra \ jr nc, $+3 \ add hl, bc \ sra h \ rr l
+	rra \ jr nc, $+3 \ add hl, bc \ sla c \ rl b
+	rra \ jr nc, $+3 \ add hl, bc \ sla c \ rl b
+	rra \ jr nc, $+3 \ add hl, bc
+	rra \ ret nc
+	sla c \ rl b
+	or	a
+	sbc hl, bc
+	ret
+
+#comment
+	push	hl
+	pop	ix
+	;ld	e, (ix+0)
+	;ld	d, (ix+1)
+	ld	c, (hl)
+	inc	hl
+	ld	b, (hl)
+	inc	hl
+	ld	e, (hl)
+	inc	hl
+	ld	d, (hl)
+
+	ld	a, (gMatrix+$0)
+	call	_gFMulAxBCdiv8
+	ex	de, hl
+	
+	;ld	c, (ix+2)
+	;ld	b, (ix+3)
+	ld	c, l
+	ld	b, h
+	ld	a, (gMatrix+$1)
+	call	_gFMulAxBCdiv8
+	add	hl, de
+	ex	de, hl
+
+	ld	c, (ix+4)
+	ld	b, (ix+5)
+	push	bc
+	ld	a, (gMatrix+$2)
+	call	_gFMulAxBCdiv8
+	add	hl, de
+
+	sra	h \ rr l
+
+	;ld	a, l
+	;sra	h \ rra
+	;sra	h \ rra
+	;sra	h \ rra
+	;sra	h \ rra
+	;ld	l, a
+; translate
+	ld	de, (gMatrix+$9)
+	adc	hl, de
+	ld	(gPositionX), hl
+
+	;ld	e, (ix+4)
+	;ld	d, (ix+5)
+	pop	bc
+	push	bc
+
+	ld	a, (gMatrix+$5)
+	call	_gFMulAxBCdiv8
+	ex	de, hl
+	
+	ld	c, (ix+2)
+	ld	b, (ix+3)
+	push	bc
+	ld	a, (gMatrix+$4)
+	call	_gFMulAxBCdiv8
+	add	hl, de
+	ex	de, hl	
+
+	ld	c, (ix+0)
+	ld	b, (ix+1)
+	push	bc
+	ld	a, (gMatrix+$3)
+	call	_gFMulAxBCdiv8
+	add	hl, de
+
+	sra	h \ rr l
+
+	;ld	a, l
+	;sra	h \ rra
+	;sra	h \ rra
+	;sra	h \ rra
+	;sra	h \ rra
+	;ld	l, a
+; translate
+	ld	de, (gMatrix+$B)
+	adc	hl, de
+	ld	(gPositionY), hl
+
+	;ld	e, (ix+0)
+	;ld	d, (ix+1)
+	pop	bc
+	ld	a, (gMatrix+$6)
+	call	_gFMulAxBCdiv8
+	ex	de, hl
+	
+	;ld	c, (ix+2)
+	;ld	b, (ix+3)
+	pop	bc
+	ld	a, (gMatrix+$7)
+	call	_gFMulAxBCdiv8
+	add	hl, de
+	ex	de, hl
+
+	;ld	c, (ix+4)
+	;ld	b, (ix+5)
+	pop	bc
+	ld	a, (gMatrix+$8)
+	call	_gFMulAxBCdiv8
+	add	hl, de
+
+	sra	h \ rr l
+
+	;ld	a, l
+	;sra	h \ rra
+	;sra	h \ rra
+	;sra	h \ rra
+	;sra	h \ rra
+	;ld	l, a
+; translate
+	ld	de, (gMatrix+$D)
+	adc	hl, de
+	ld	(gPositionZ), hl
+	ret
+#endcomment
+#comment
+_gFMulBCxA:
+;	ld	hl, 0
+;	or	a
+;	ret	z
+	rra \ jr nc, $+8 \ ld h, b \ ld l, c \ sra h \ rr l
+	rra \ jr nc, $+3 \ add hl, bc \ sra h \ rr l
+	rra \ jr nc, $+3 \ add hl, bc \ sra h \ rr l
+	rra \ jr nc, $+3 \ add hl, bc \ sla c \ rl b
+	rra \ jr nc, $+3 \ add hl, bc \ sla c \ rl b
+	rra \ jr nc, $+3 \ add hl, bc
+	rra \ ret nc
+	sla c \ rl b
+	or	a
+	sbc	hl, bc
+	ret
+#endcomment
+#comment
+_gFMulHLxA:
+	ld	b, h
+	ld	c, l
+_gFMulBCxA:
+	ld	hl, 0
+_gFMulEntry:
+	rra \ jr c, _gLowBit1
+	rra \ jr c, _gLowBit2
+	rra \ jr c, _gLowBit3
+	rra \ jr c, _gLowBit4 \ sla c \ rl b
+	rra \ jr c, _gLowBit5 \ sla c \ rl b
+	rra \ add hl,bc
+	rra \ ret nc
+	sla c \ rl b
+	or	a
+	sbc	hl, bc
+	ret
+_gLowBit1:
+	ld	h, b
+	ld	l, c
+	sra	h \ rr l
+	rra
+	jr	nc, $+3
+_gLowBit2:
+	add	hl, bc
+	sra	h \ rr l
+	rra
+	jr	nc, $+3
+_gLowBit3:
+	add	hl, bc
+	sra	h \ rr l
+	rra
+	jr	nc, $+3
+_gLowBit4:
+	add	hl, bc
+	sla c \ rl b
+	rra
+	jr	nc, $+3
+_gLowBit5:
+	add	hl, bc
+	sla c \ rl b
+	rra
+	jr	nc, $+3
+_gLowBit6:
+	add	hl, bc
+_gFMulEnd:
+	rra \ ret nc
+	sla c \ rl b
+	or	a
+	sbc	hl, bc
+	ret
+#endcomment
+#comment
+_gAmulE:
+;
+	add	a,a
+	jr	c,Mul_A_DE_Custom_ANeg
+	add	a,a
+	jr	c,Mul_A_DE_Custom_A64
+	jr	z,Mul_A_DE_Custom_A0
+	ld	h,d
+	ld	l,e
+	add	a,a
+	jr	c,Mul_A_DE_Custom_A5High
+	add	a,a
+	jr	c,Mul_A_DE_Custom_A4High
+	add	a,a
+	jr	c,Mul_A_DE_Custom_A3High
+	add	a,a
+	jr	c,Mul_A_DE_Custom_A2High
+	add	a,a
+	ret	nc
+	add	hl,hl
+	ret	z
+	add	hl,de
+	ret
+
+Mul_A_DE_Custom_ANeg64:
+	ex	de,hl
+Mul_A_DE_Custom_A64:
+	sra	d
+	jp	m,Mul_A_DE_Custom_A64_DENot512
+	jr	nz,Mul_A_DE_Custom_A64_DE512
+Mul_A_DE_Custom_A64_DENot512:
+	rr	e
+	rra
+	sra	d
+	rr	e
+	rra
+	ld	h,e
+	ld	l,a
+	ret
+
+Mul_A_DE_Custom_A64_DE512:
+	ld	hl,32767
+	ret
+
+Mul_A_DE_Custom_A0:
+	ld	h,a
+	ld	l,a
+	ret
+
+Mul_A_DE_Custom_ANeg:
+	ld	hl,0
+	or	a
+	sbc	hl,de
+	add	a,a
+	jr	z,Mul_A_DE_Custom_ANeg64
+	add	hl,hl
+	add	a,a
+	jr	nc,$+3
+	add	hl,de
+Mul_A_DE_Custom_A5High:
+	add	hl,hl
+	add	a,a
+	jr	nc,$+3
+	add	hl,de
+Mul_A_DE_Custom_A4High:
+	add	hl,hl
+	add	a,a
+	jr	nc,$+3
+	add	hl,de
+Mul_A_DE_Custom_A3High:
+	add	hl,hl
+	add	a,a
+	jr	nc,$+3
+	add	hl,de
+Mul_A_DE_Custom_A2High:
+	add	hl,hl
+	add	a,a
+	jr	nc,$+3
+	add	hl,de
+	add	hl,hl
+	ret	z
+	add	hl,de
+	ret
+#endcomment
+_gRotateEnd:
+
+;13
+;project
+	.dw	_gProjectEnd
+	.db	%00011111
+	.db	62h, 0Dh
+	.db	AXM_SUB
+	.db	AXM_0ARGS
+	.org	$0
+	ld	hl, 49*512
+	ld	de, (gPositionZ)
+	call	sub_Div
+	push	hl
+	ld	de, (gPositionY)
+	call	sub_Mul
+	ld	a, h
+	sra	a
+	ld	h, a
+	ld	a, 32
+	sbc	a, h
+	ld	(gScreenY), a
+	pop	hl
+	ld	de, (gPositionX)
+	call	sub_Mul
+	ld	a, h
+	sra	a
+	adc	a, 48
+	ld	(gScreenX), a
+	ret
+_gProjectEnd:
+
+;14
+;gFastTransform(16vec3)
+	.dw	_fast_gRotateEnd
+	.db	%00011111
+	.db	62h, 05h
+	.db	AXM_SUB
+	.db	AXM_1ARGS
+	.org	$0
+; matrix is at Matrix , LUT at TABLE
+; hl : adress of point (3 bytes)
+	ld	e, (hl)			;7
+	inc	hl				;6
+	inc	hl
+	ld	d, (hl)			;7
+	inc	hl				;6
+	inc	hl
+	ld	c, (hl)			;7
+	ld	h, gMulTable/256		;7
+	ld	a, (gMatrix+$0)		;13
+	add	a, e				;4
+	ld	l, a				;4
+	sub	e				;4
+	sub	e				;4
+	ld	b, a				;4
+	ld	a, (hl)			;7
+	ld	l, b				;4
+	sub	(hl)				;7
+	ld	b, a				;4
+;
+	ld	a, (gMatrix+$1)		;13
+	add	a, d				;4
+	ld	l, a				;4
+	ld	a, b				;4
+	add	a, (hl)			;7
+	ld	b, a				;4
+	ld	a, l				;4
+	sub	d				;4
+	sub	d				;4
+	ld	l, a				;4
+	ld	a, b				;4
+	sub	(hl)				;7
+	ld	b, a				;4
+;
+	ld	a, (gMatrix+$2)		;13
+	add	a, c				;4
+	ld	l, a				;4
+	ld	a, b				;4
+	add	a, (hl)			;7
+	ld	b, a				;4
+	ld	a, l				;4
+	sub	c				;4
+	sub	c				;4
+	ld	l, a				;4
+	ld	a, b				;4
+	sub	(hl)				;7
+;
+	push	af
+;
+	ld	a, (gMatrix+$3)		;13
+	add	a, e				;4
+	ld	l, a				;4
+	sub	e				;4
+	sub	e				;4
+	ld	b, a				;4
+	ld	a, (hl)			;7
+	ld	l, b				;4
+	sub	(hl)				;7
+	ld	b, a				;4
+;
+	ld	a, (gMatrix+$4)		;13
+	add	a, d				;4
+	ld	l, a				;4
+	ld	a, b				;4
+	add	a, (hl)			;7
+	ld	b, a				;4
+	ld	a, l				;4
+	sub	d				;4
+	sub	d				;4
+	ld	l, a				;4
+	ld	a, b				;4
+	sub	(hl)				;7
+	ld	b, a				;4
+;
+	ld	a, (gMatrix+$5)		;13
+	add	a, c				;4
+	ld	l, a				;4
+	ld	a, b				;4
+	add	a, (hl)			;7
+	ld	b, a				;4
+	ld	a, l				;4
+	sub	c				;4
+	sub	c				;4
+	ld	l, a
+	ld	a, b				;4
+	sub	(hl)				;7
+;
+	;push	af
+	ld	b, e
+	ld	e, a
+;
+	
+	ld	a, (gMatrix+$6)		;13
+	add	a, b				;4	;change
+	ld	l, a				;4
+	sub	b				;4	;
+	sub	b				;4	;
+;	
+	ld	b, a				;4
+	ld	a, (hl)			;7
+	ld	l, b				;4
+	sub	(hl)				;7
+	ld	b, a				;4
+;
+	ld	a, (gMatrix+$7)		;13
+	add	a, d				;4
+	ld	l, a				;4
+	ld	a, b				;4
+	add	a, (hl)			;7
+	ld	b, a				;4
+	ld	a, l				;4
+	sub	d				;4
+	sub	d				;4
+	ld	l, a				;4
+	ld	a, b				;4
+	sub	(hl)				;7
+	ld	b, a				;4
+;
+	ld	a, (gMatrix+$8)		;13
+	add	a, c				;4
+	ld	l, a				;4
+	ld	a, b				;4
+	add	a, (hl)			;7
+	ld	b, a				;4
+	ld	a, l				;4
+	sub	c				;7
+	sub	c				;7
+	ld	l, a
+	ld	a, b				;4
+	sub	(hl)				;7
+;
+	ld	hl, (gMatrix+$D)
+	sra	h \ rr l
+	ld	c, a
+	rlca
+	sbc	a,a
+	ld	b, a
+	add	hl, bc
+	ld	(gPositionZ), hl
+
+	;pop	af
+	ld	hl, (gMatrix+$B)
+	sra	h \ rr l
+	ld	a, e
+	rlca
+	sbc	a,a
+	ld	d, a
+	add	hl, de
+	ld	(gPositionY), hl
+
+	pop	af
+	ld	hl, (gMatrix+$9)
+	sra	h \ rr l
+	ld	e, a
+	rlca
+	sbc	a,a
+	ld	d, a
+	add	hl, de
+	ld	(gPositionX), hl
+	ret
+_fast_gRotateEnd:
+
+;15
+;gFastProject
+	.dw	_fast_gProjectEnd
+	.db	%00011111
+	.db	62h, 0Eh
+	.db	AXM_SUB
+	.db	AXM_0ARGS
+	.org	$0
+#comment
+; hl is Z, de is X, bc is Y
+; assume hl is stricly positive
+; 265 bytes, +-600 TStates depending the input
+	ld	hl, (gPositionZ)
+	ld	de, (gPositionX)
+	ld	bc, (gPositionY)
+	add	hl, hl
+; return if neg
+	ret	c
+	ld	a, h
+	or	a
+	jr	z, _gScaleUp
+_gScaleDownLoop:
+	srl	a
+	rr	l
+	sra	d
+	rr	e
+	sra	b
+	rr	c
+	or	a
+	jp	nz, _gScaleDownLoop
+	ld	h, a
+_gScaleUp:
+; l, e, c are significant
+	ld	a, l
+	or	a
+	ret	z
+	cp	98
+	jp	z, _gNoBissect
+	jr	nc, _gScaleDone
+_gScaleUpLoop:
+	sla	e
+	sla	c
+	add	a, a
+	cp	98
+	jp	c, _gScaleUpLoop
+_gScaleDone:
+	rra
+	ld	l, a
+; l=Z, e=X, c=Y
+; first optimized iters (h,d,b are 0)
+gBissectFirstIter:
+	srl	a
+	cp	49
+; calculate midpoint and classify
+	jr	nc, $+14
+; store to h	
+	ld	h, a
+	ld	d, e
+	inc	d
+	sra	d
+	ld	b, c
+	inc	b
+	sra	b
+	jp	$+10
+; store it to l
+	ld	l, a
+	inc	e
+	sra	e
+	inc	c
+	sra	c
+; the bissection macro, unrolled to gain speed (and because we need all register)
+#macro	gBissectIter()
+	ld	a, l	
+	add	a, h
+	rra
+	cp	49
+; calculate midpoint and classify
+	jr	nc, $+17
+; store to h	
+	ld	h, a
+	ld	a, e
+	adc	a, d
+	sra	a
+	ld	d, a
+	ld	a, c
+	inc	a
+	add	a, b
+	sra	a
+	ld	b, a
+	jp	$+16
+; store it to l
+	ld	l, a
+	ld	a, e
+	inc	a
+	add	a, d
+	sra	a
+	ld	e, a
+	ld	a, c
+	inc	a
+	add	a, b
+	sra	a
+	ld	c, a
+#endmacro
+; 4 more iters to match precision
+gBissectIter()
+gBissectIter()
+gBissectIter()
+gBissectIter()
+; finish:
+	ld	a, e
+	add	a, d
+; note : rra works because both d and e are either positive (no carry) or negative (carry set)
+	;sra	a
+	rra
+	adc	a, 48
+; or whatever
+	ld	(gScreenX), a
+	ld	a, c
+	add	a, b
+	rra
+	;sra	a
+	ld	c, a
+	ld	a, 32
+	sbc	a, c
+	ld	(gScreenY), a
+	ret
+_gNoBissect:
+	ld	a, e
+	add	a, 48
+	ld	(gScreenX), a
+	ld	a, 32
+	sub	c
+	ld	(gScreenY), a
+	ret
+#endcomment
+	ret
+#comment
+;e,c [-128,128], [-255,255];; z=l, in [0-255]	
+	ld	hl, (gPositionZ)
+	sra	h \ rr l
+	ld	de, (gPositionY)
+	sra	d \ rr e
+	ld	bc, (gPositionX)
+	sra	b \ rr c
+
+_sub:
+	ld	h, l
+	ld	d, e
+	ld	b, c
+	ld	a, l
+	sub	49
+	jr	z, _end
+	jr	c, _except
+
+	ld a,h \ srl l \ sbc a,l \ cp 49  \ jp c, _D1
+_F1:	ld h,a \ ld a,d \ sra e \ sbc a,e \ ld d,a 
+	ld a,b \ sra c \ sbc a,c \ ld b,a 
+ 	ld a,h \ srl l \ sbc a,l \ cp 49  \ jp c, _D2
+_F2:	ld h,a \ ld a,d \ sra e \ sbc a,e \ ld d,a 
+	ld a,b \ sra c \ sbc a,c \ ld b,a 
+ 	ld a,h \ srl l \ sbc a,l \ cp 49  \ jp c, _D3
+_F3:	ld h,a \ ld a,d \ sra e \ sbc a,e \ ld d,a 
+	ld a,b \ sra c \ sbc a,c \ ld b,a 
+	ld a,h \ srl l \ sbc a,l \ cp 49  \ jp c, _D4
+_F4:	ld h,a \ ld a,d \ sra e \ sbc a,e \ ld d,a 
+	ld a,b \ sra c \ sbc a,c \ ld b,a 
+	ld a,h \ srl l \ sbc a,l \ cp 49  \ jp c, _D5
+_F5:	ld h,a \ ld a,d \ sra e \ sbc a,e \ ld d,a 
+	ld a,b \ sra c \ sbc a,c \ ld b,a 
+	ld a,h \ srl l \ sbc a,l \ cp 49  \ jp c, _D6
+_F6:	ld h,a \ ld a,d \ sra e \ sbc a,e \ ld d,a 
+	ld a,b \ sra c \ sbc a,c \ ld b,a 
+	ld a,h \ srl l \ sbc a,l \ cp 49  \ jp c, _D7
+_F7:	ld h,a \ ld a,d \ sra e \ sbc a,e \ ld d,a 
+	ld a,b \ sra c \ sbc a,c \ ld b,a 
+	ld a,h \ srl l \ sbc a,l \ cp 49 \ jp c,_end
+_F8:	ld h,a \ ld a,d \ sra e \ sbc a,e \ ld d,a 
+	ld a,b \ sra c \ sbc a,c
+	jp	_endopt
+
+_D1:	sra e \ sra c
+	ld a,h \ srl l \ sbc a,l \ cp 49  \ jp nc, _F2
+_D2:	sra e \ sra c
+	ld a,h \ srl l \ sbc a,l \ cp 49  \ jp nc, _F3
+_D3:	sra e \ sra c
+	ld a,h \ srl l \ sbc a,l \ cp 49  \ jp nc, _F4
+_D4:	sra e \ sra c
+	ld a,h \ srl l \ sbc a,l \ cp 49  \ jp nc, _F5
+_D5:	sra e \ sra c
+	ld a,h \ srl l \ sbc a,l \ cp 49  \ jp nc, _F6
+_D6:	sra e \ sra c
+	ld a,h \ srl l \ sbc a,l \ cp 49  \ jp nc, _F7
+_D7:	sra e \ sra c
+	ld a,h \ srl l \ sbc a,l \ cp 49 \ jp c,_end
+	ld h,a \ ld a,d \ sra e \ sbc a,e \ ld d,a 
+	ld a,b \ sra c \ sbc a,c
+
+_endopt:
+	add	a, 48
+	ld	(gScreenX), a
+	ld	a, d
+	add	a, 32
+	ld	(gScreenY), a
+	ret	
+
+_end:
+	ld	a, d
+	add	a, 32
+	ld	(gScreenY), a
+	ld	a, b
+	add	a, 48
+	ld	(gScreenX), a
+	ret
+_except:
+	call	sub_gProject
+	ret
+#endcomment
+_fast_gProjectEnd:
+
+;16
+;gGetkey
+	.dw	_gGetkeyEnd
+	.db	%00011111
+	.db	62h,1Eh
+	.db	AXM_SUB
+	.db	AXM_0ARGS
+	.org	$0
+	ld	a, %11111110		;7	;arrow key
+	out	($01), a
+; delay
+	or	a
+	ld	a, (de)
+_gModelCam:				;
+;						;	
+	in	a, ($01)			;11
+;						;
+	rra					;4
+	jr	c,_gDownSkip
+		ld	b, a
+		ld	a, (gAngZ)
+		add	a, -4
+		ld	(gAngZ), a
+		ld	a, b
+_gDownSkip:
+	rra
+	jr	c, _gLeftSkip
+		ld	b, a
+		ld	a, (gAngXY)
+		add	a, -4
+		ld	(gAngXY), a
+		ld	a, b
+_gLeftSkip:
+	rra
+
+	jr	c, _gRightSkip
+		ld	b, a
+		ld	a, (gAngXY)
+		add	a, 4
+		ld	(gAngXY), a
+		ld	a, b
+_gRightSkip:
+	rra
+	jr	c,	_gUpSkip
+		ld	a, (gAngZ)
+		add	a, 4
+		ld	(gAngZ), a
+_gUpSkip:
+	
+	ld	a, %10111111	;group 6
+	out	($01), a
+
+	ld	hl, (gMatrix+$D)
+	ld	de, 4
+	
+	in	a, ($01)
+	rra
+
+	jr	nc, $+3
+		add	hl, de
+	; F5, A has been rotated right
+	and	%00001000
+	jr	z, _gSkipZoom
+		or	a
+		sbc	hl, de
+_gSkipZoom:
+	ld	a, h
+	and	%00111111
+	ld	h, a
+
+	ld	(gMatrix+$D), hl
+
+	ret
+_gGetkeyEnd:
+
+;17
+;gVertexShader(lLink)
+	.dw	_gVertexShaderEnd + 1
+	.db	%00011111
+	.db	62h, 22h
+	.db	AXM_SUB
+	.db	AXM_1ARGS
+	.org	$0
+	inc	hl
+	ld	a, h
+	or	l
+	jr	z, _gDefaultVSHSet
+	dec	hl
+	ld	(gVertexCall), hl
+	ret
+_gDefaultVSHSet:
+	.db $7F \ .org $-1
+	ld	hl, _gDefaultVSH
+	ld	(gVertexCall), hl	
+	ret
+_gDefaultVSH:
+	ld	de, (gtmpInStream)
+	ld	hl, (gArrayOffset)
+	add	hl, de
+	ld	(gtmpInStream), hl
+	ex	de, hl
+	call	sub_gRotate
+	jp	sub_gProject
+_gVertexShaderEnd:
+
+;18
+;gGeomShader
+	.dw	_gGeomShaderEnd + 1
+	.db	%00011111
+	.db	62h, 23h
+	.db	AXM_SUB
+	.db	AXM_1ARGS
+	.org	$0
+	inc	hl
+	ld	a, h
+	or	l
+	jr	z, _gDefaultGSHSet
+	dec	hl
+	ld	(gGeometryCall), hl
+	ret
+_gDefaultGSHSet:
+	.db $7F \ .org $-1
+	ld	hl, _gDefaultGSH
+	ld	(gGeometryCall), hl	
+	ret
+_gDefaultGSH:
+	jp	sub_gClipPolygon
+_gGeomShaderEnd:
+
+;19
+;gIn
+	.dw	_gInEnd
+	.db	%00011111
+	.db	62h, 25h
+	.db	AXM_INLINE
+	.db	AXM_2ARGS
+	.org	$0
+	; (hl)->(de)
+	pop	bc
+	ex	de, hl
+	ld	hl, (gtmpInStream)
+	ldir
+	ld	(gtmpInStream), hl
+_gInEnd:
+
+;20
+;gOut	
+	.dw	_gOutEnd
+	.db	%00011111
+	.db	62h, 26h
+	.db	AXM_INLINE
+	.db	AXM_2ARGS
+	.org	$0
+	pop	bc
+	ld	de, (gtmpOutStream)
+	ldir
+	ld	(gtmpOutStream), de
+_gOutEnd:
+
+;21
+;gEndPrimitive	
+	.dw	_gEPrimitiveEnd + 1
+	.db	%00011111
+	.db	62h, 29h
+	.db	AXM_SUB
+	.db	AXM_0ARGS
+	.org	$0
+	ld	hl, (gVBOPoint)
+	push	hl
+	ld	hl, (gEmitVertex)
+	ld	(gVBOPoint), hl
+	ld	a, (gEdgePoint)
+	ld	h, 0
+	ld	l, a
+	ld	(gVerticesIn), hl
+	.db $7F \ .org $-1
+	ld	hl, _gIndexList
+	ld	(gVertexIndex), hl
+	call	sub_gClipPolygon
+	pop	hl
+	ld	(gVBOPoint), hl
+; jump to drawing
+	ld	hl, (gDrawCall)
+	jp	(hl)
+_gIndexList:
+	.db	0,1,2,3,4,5,6,7
+_gEPrimitiveEnd:
+
+;22
+;gGenVBO(data,nbofvertex)
+	.dw	_gGenVBOEnd
+	.db	%00011111
+	.db	62h, 16h
+	.db	AXM_SUB
+	.db	AXM_2ARGS
+	.org	$0
+	ex	de, hl
+	ld	c, 0
+	ld	hl, gVBO_POOL
+_gVBOLoop:
+	ld	a, (hl)
+	or	a
+	jr	z, _gVBOFound
+	inc	c
+	inc	hl
+	inc	hl
+	ld	a, c
+	sub	8
+	jr	nz, _gVBOLoop
+	ld	a, gSTACK_FULL
+_gVBOCleanExit:
+	pop	af		;clean stack
+	pop	bc
+	push	af
+	ld	(gError), a
+	ret
+_gVBOFound:
+; c hold VBO index, hl is VBOPOOL adress, de is the number of point
+	ex	de, hl
+	add	hl, hl
+	add	hl, hl
+	add	hl, hl
+	add	hl, hl
+	inc	hl
+	inc	hl
+; hl is size, de vbopool adress, c index
+	push	de
+	ld	a, c
+	add	a, 48
+	ld	(gVBOID), a
+	ld	bc, gVBOName
+	push	bc
+	call	sub_NewVar
+	pop	de
+; hl vbo adress, de vbopool
+	ld	a, l
+	or	h
+	jr	nz, _gVBOGenSucceed
+; error !
+	ld	a, gOUT_OF_MEMORY
+	jr	_gVBOCleanExit
+_gVBOGenSucceed:
+	pop	af
+	pop	bc
+	push	af
+; hl->(de), bc->(hl)
+	ld	a, l
+	ld	(de), a
+	inc	de
+	ld	a, h
+	ld	(de), a
+	ld	(hl), c
+	inc	hl
+	ld	(hl), b
+; retrieve mask
+	ld	a, (gVBOID)
+	sub	48
+	ld	h, gVBO_MASK
+	ld	l, a
+	ret
+_gGenVBOEnd:
+
+;23
+;gVBOParam
+	.dw	_gVBOParamEnd
+	.db	%00011111
+	.db	62h, 17h
+	.db	AXM_SUB
+	.db	AXM_2ARGS
+	.org	$0
+	pop	de
+	pop	af
+	push	de
+	rra
+	jr	nc, _gSkipSet
+; set vbo
+	ld	h, 0
+	add	hl, hl
+	ld	de, gVBO_POOL
+	add	hl, de
+	ld	a, (hl)
+	inc	hl
+	ld	h, (hl)
+	ld	l, a
+	ld	e, (hl)
+	inc	hl
+	ld	d, (hl)
+	inc	hl
+	ld	(gVBOInStream), de
+	ld	(gVBOPoint), hl
+	inc	hl
+	inc	hl
+	ld	(gVBOVertex), hl
+	ret
+_gSkipSet:
+; data
+	rra
+	jr	nc, _gSkipDataSet
+	ld	(gVBOInStream), hl
+	ret
+_gSkipDataSet:
+	inc	hl
+	ld	a, h
+	or	l
+	jr	nz, _gNotDefault
+	ld	hl, 7 
+_gNotDefault:
+	dec	hl
+	ld	(gArrayOffset), hl
+	ret
+_gVBOParamEnd:
+
+;24
+;gVBOUpdate
+	.dw	_gVBOUpdateEnd
+	.db	%00011111
+	.db	62h ,1Ah
+	.db	AXM_SUB
+	.db	AXM_2ARGS
+	.org	$0
+	pop	af
+	pop	de
+	push	af
+; setup vars
+	or	a
+	sbc	hl, de
+	inc	hl
+	ld	a, l
+	ld	(gVBOCount), a
+	ld	h, d
+	ld	l, e
+	add	hl, hl
+	add	hl, hl
+	add	hl, hl
+	add	hl, hl
+	ld	bc, (gVBOPoint)
+	add	hl, bc
+	ld	(gtmpOutStream), hl
+	push	hl
+	ld	hl, (gArrayOffset)
+	call	sub_Mul
+	ld	de, (gVBOInStream)
+	add	hl, de
+	ld	(gtmpInStream), hl
+_gVBOUpdateLoop:
+; transform and classify
+	call	_gVertexShader
+; Z<1 ?
+	ld	hl, (gPositionZ)
+	dec	hl
+	dec	hl
+	ld	a, h
+	rlca
+	and	$01
+; Z-Y<0 ?
+	inc	hl
+	inc	hl
+	ld	de, (gPositionY)
+	sbc	hl, de
+	ld	c, h
+	rl	c
+	rla
+	add	hl, de
+; Z+Y<0 ?
+	add	hl, de
+	ld	c, h
+	rl	c
+	rla
+	or	a
+	sbc	hl, de
+; Z-X<0 ?
+	ld	de, (gPositionX)
+	sbc	hl, de
+	ld	c, h
+	rl	c
+	rla
+	add	hl, de
+; Z+X<0 ?
+	add	hl, de
+	ld	c, h
+	rl	c
+	rla
+	pop	de
+; copy data
+	ld	hl, gScreenX
+	ldi \ ldi
+	;ld	hl, gPosition
+	ldi \ ldi \ ldi
+	ldi \ ldi \ ldi
+	ld	hl, 7
+	add	hl, de
+	ld	(hl), a
+	inc	hl
+	ex	de, hl
+	push	de
+; update counter
+	ld	hl, gVBOCount
+	dec	(hl)
+	jp 	nz, _gVBOUpdateLoop
+	pop	hl
+	ret
+_gVertexShader:
+	ld	hl, (gVertexCall)
+	jp	(hl)
+_gVBOUpdateEnd:
+
+;25
+;gVBOPoint
+	.dw	_gVBOPointEnd
+	.db	%00011111
+	.db	62h, 12h
+	.db	AXM_INLINE
+	.db	AXM_1ARGS
+	.org	$0
+	add	hl, hl
+	add	hl, hl
+	add	hl, hl
+	add	hl, hl
+	ld	de, (gVBOPoint)
+	add	hl, de
+	ld	de, gScreenX
+	ldi \ ldi
+	ld	de, 13
+	add	hl, de
+	ld	l, (hl)
+	ld	h, 0
+_gVBOPointEnd:
+
+;26
+;gVBOVertex
+	.dw	_gVBOVertexEnd
+	.db	%00011111
+	.db	62h, 35h
+	.db	AXM_INLINE
+	.db	AXM_1ARGS
+	.org	$0
+	add	hl, hl
+	add	hl, hl
+	add	hl, hl
+	add	hl, hl
+	ld	de, (gVBOVertex)
+	add	hl, de
+	ld	de, gPosition
+	ldi \ ldi \ ldi
+	ldi \ ldi \ ldi
+_gVBOVertexEnd:
+
+;27
+;gVBOData(data, size, offset, id)
+	.dw	_gVBODataEnd
+	.db	%00011111
+	.db	62h, 18h
+	.db	AXM_SUB
+	.db	AXM_4ARGS
+	.org	$0
+	add	hl, hl
+	add	hl, hl
+	add	hl, hl
+	add	hl, hl
+	pop	af
+	pop	de
+	add	hl, de
+	ld	de, (gVBOVertex)
+	add	hl, de
+	pop	bc
+	pop	de
+	push	af
+	ex	de, hl
+	ldir
+	ret
+_gVBODataEnd:
+
+;28
+;gVBOGetData
+	.dw	_gVBOGetDataEnd
+	.db	%00011111
+	.db	62h, 19h
+	.db	AXM_SUB
+	.db	AXM_4ARGS
+	.org	$0
+	add	hl, hl
+	add	hl, hl
+	add	hl, hl
+	add	hl, hl
+	pop	af
+	pop	de
+	add	hl, de
+	ld	de, (gVBOVertex)
+	add	hl, de
+	pop	bc
+	pop	de
+	push	af
+	;ex	de, hl
+	ldir
+	ret
+_gVBOGetDataEnd:
+
+;29
+;gClip3D
+	.dw	_gClip3DEnd
+	.db	%00011111
+	.db	63h, 0Ah
+	.db	AXM_SUB
+	.db	AXM_2ARGS
+	.org	$0
+; 289 if out, 404 if in
+; 550 before clip
+; get indexed data
+	add	hl, hl
+	add	hl, hl
+	add	hl, hl
+	add	hl, hl
+	ld	de, (gVBOPoint)
+	add	hl, de	
+	ex	de, hl
+	ld	hl, 15
+	add	hl, de
+	ld	c, (hl)
+; second one
+	pop	af
+	pop	hl
+	push	af
+; save first
+	push	de
+	add	hl, hl
+	add	hl, hl
+	add	hl, hl
+	add	hl, hl
+	ld	de, (gVBOPoint)
+	add	hl, de
+	ex	de, hl
+	ld	hl, 15
+	add	hl, de
+	ld	b, (hl)
+	ex	de, hl
+	pop	de
+; bc hold code for the two points	
+; same sector, skip
+	ld	a, b
+	and	c
+	ret	nz
+; get plane in a
+	ld	a, b
+	or	c
+	jr	nz, _gDoClip
+; no clip to perform
+; copy hl,de to line coordinate
+	push	de
+	ld	de, gLineX0
+	ldi \ ldi
+	pop	hl
+	;ld	de, gLineX1
+	ldi \ ldi
+	ld	hl, 0
+	ret
+_gDoClip:
+; copy hl+2,de+2
+	push	de
+	inc	hl
+	inc	hl
+	ld	de, gFirstVertex
+	ldi \ ldi \ ldi
+	ldi \ ldi \ ldi
+	pop	hl
+	inc	hl
+	inc	hl
+	ldi \ ldi \ ldi
+	ldi \ ldi \ ldi
+; vertex has been copied from VBO, now perform cliping (a)
+;0,0,0,z, down, up, right, left
+	;bit	4, a
+	call	_gClipZ0
+	;rra
+	call	_gClipLeft
+	;rra
+	call	_gClipRight
+	;rra
+	call _gClipUp
+	;rra
+	call _gClipDown
+	;rra
+	;call	 _gClipZ0
+; project gFirstVertex and gSecondVertex, store to line coord
+	call	sub_gProject
+	ld	a, (gScreenX)
+	ld	(gLineX0), a
+	ld	a, (gScreenY)
+	ld	(gLineY0), a
+	ld	hl, gSecondVertex
+	ld	de, gFirstVertex
+	ldi \ ldi \ ldi
+	ldi \ ldi \ ldi
+	call	sub_gProject	
+	ld	a, (gScreenX)
+	ld	(gLineX1), a
+	ld	a, (gScreenY)
+	ld	(gLineY1), a
+; reset z flag
+	ld	hl, 0
+	ret
+_gClipZ0:
+	push	af
+; dot product with plane
+; Z-1
+	ld	hl, (gFirstVertexZ)
+	dec	hl
+	dec	hl
+	ld	de, (gSecondVertexZ)
+	dec	de
+	dec	de
+	jp	_gSharedClip
+_gClipDown:
+	push	af
+; dot product with plane
+; Z-Y
+	ld	hl, (gFirstVertexZ)
+	ld	de, (gFirstVertexY)
+	or	a
+	sbc	hl, de
+	push	hl
+	ld	hl, (gSecondVertexZ)
+	ld	de, (gSecondVertexY)
+	or	a
+	sbc	hl, de
+	ex	de, hl
+	pop	hl
+	jp	_gSharedClip
+_gClipUp:
+	push	af
+; dot product with plane
+; Z+Y
+	ld	hl, (gFirstVertexZ)
+	ld	de, (gFirstVertexY)
+	add	hl, de
+	push	hl
+	ld	hl, (gSecondVertexZ)
+	ld	de, (gSecondVertexY)
+	add	hl, de
+	ex	de, hl
+	pop	hl
+	jp	_gSharedClip
+_gClipRight:
+	push	af
+; dot product with plane
+; Z-X
+	ld	hl, (gFirstVertexZ)
+	ld	de, (gFirstVertexX)
+	or	a
+	sbc	hl, de
+	push	hl
+	ld	hl, (gSecondVertexZ)
+	ld	de, (gSecondVertexX)
+	or	a
+	sbc	hl, de
+	ex	de, hl
+	pop	hl
+	jp	_gSharedClip
+_gClipLeft:
+	push	af
+; dot product with plane
+; X+Z
+	ld	hl, (gFirstVertexZ)
+	ld	de, (gFirstVertexX)
+	add	hl, de
+	push	hl
+	ld	hl, (gSecondVertexZ)
+	ld	de, (gSecondVertexX)
+	add	hl, de
+	ex	de, hl
+	pop	hl
+_gSharedClip:
+; hl=first, de second
+	ld	a, d
+	or	h
+	rla
+	jp	c, _gVectorClipTest1
+	pop	af
+	ret
+_gVectorClipTest1:
+	ld	a, d
+	and	h
+	rla
+	jp	nc, _gVectorClipTest2
+; exit all code
+	pop	af
+	pop	hl
+	ret
+_gVectorClipTest2:
+;s = da*16/(da-db)
+;i.x=a.x+s*(b.x-a.x)
+	ld	b, h
+	ld	c, l
+	or	a
+	sbc	hl, de
+	jp	nz, _gFactorNotNull
+; quit since the two point are in the plane
+	pop	af
+	pop	hl
+	ret
+_gFactorNotNull:
+	ex	de, hl
+	ld	h, b
+	ld	l, c
+	push	bc
+; save sign of first distance
+	;add	hl, hl
+	;add	hl, hl
+	;add	hl, hl
+	;add	hl, hl
+	call	sub_88Div
+	;ld	c, l
+	ld	a, l
+; c is factor (positive)
+; first coordinate
+	ld	hl, (gSecondVertexX)
+	ld	de, (gFirstVertexX)
+	;call	_gSubMulOptimized
+	;gMacroSDiv16
+	call	_gFMulHLmDExA
+	ld	de, (gFirstVertexX)
+	adc	hl, de
+	push	hl
+; second coordinate
+	ld	hl, (gSecondVertexY)
+	ld	de, (gFirstVertexY)
+	call	_gFMulHLmDExA
+	;call	_gSubMulOptimized
+	;gMacroSDiv16
+	ld	de, (gFirstVertexY)
+	adc	hl, de
+	push	hl
+; third coordinate
+	ld	hl, (gSecondVertexZ)
+	ld	de, (gFirstVertexZ)
+	;call	_gSubMulOptimized
+	;gMacroSDiv16
+	call	_gFMulHLmDExA
+	ld	de, (gFirstVertexZ)
+	adc	hl, de
+	pop	de
+	pop	bc
+	pop	af
+	rla
+; first distance negative <-> first vertex out
+	jr	nc, _gCopyToSecond
+	ld	(gFirstVertexZ), hl
+	ld	(gFirstVertexY), de
+	ld	(gFirstVertexX), bc
+	pop	af
+	ret
+_gCopyToSecond:
+	ld	(gSecondVertexZ), hl
+	ld	(gSecondVertexY), de
+	ld	(gSecondVertexX), bc
+	pop	af
+	ret
+
+_gFMulHLmDExA:
+	or	a
+	sbc	hl, de
+	ex	de, hl
+	ld	hl, 0
+	rrca \ jr nc, $+3 \ add hl, de \ sra h \ rr l
+	rrca \ jr nc, $+3 \ add hl, de \ sra h \ rr l
+	rrca \ jr nc, $+3 \ add hl, de \ sra h \ rr l
+	rrca \ jr nc, $+3 \ add hl, de \ sra h \ rr l
+	rrca \ jr nc, $+3 \ add hl, de \ sra h \ rr l
+	rrca \ jr nc, $+3 \ add hl, de \ sra h \ rr l
+	rrca \ jr nc, $+3 \ add hl, de \ sra h \ rr l
+	rrca \ jr nc, $+3 \ add hl, de \ sra h \ rr l
+	ret
+
+
+#comment
+_gSubMulOptimized:
+	or	a
+	sbc	hl, de
+	ex	de, hl
+	ld	hl, 0
+	ld	a, c
+	add	a, a
+	add	a, a
+	add	a, a
+	add	a, a
+; c : [0-15] %00001111
+	add	a, a
+	jr	nc, $+4
+	ld	h, d
+	ld	l, e
+	add	hl, hl
+	add	a, a
+	jr	nc, $+3
+	add	hl, de
+	add	hl, hl
+	add	a, a
+	jr	nc, $+3
+	add	hl, de
+	add	hl, hl
+	add	a, a
+	ret	nc
+	add	hl, de
+	ret
+#endcomment
+_gClip3DEnd:
+	
+;30
+;gClipLine2D
+	.dw	_gCLineEnd
+	.db	%00011111
+	.db	62h, 1Ch
+	.db	AXM_SUB
+	.db	AXM_4ARGS
+	.org	$0
+
+	ld	(gY1), hl
+	pop	af
+	pop	bc
+	ld	(gX1), bc
+	push	af
+
+	call	_gOutCode
+	ld	(gCode2), a
+
+	pop	af
+	pop	hl
+	ld	(gY0), hl
+	pop	bc
+	ld	(gX0), bc
+	push	af
+
+	call	_gOutCode
+	ld	(gCode1), a
+
+_gClippingLoop:
+	
+	
+	ld	a, (gCode1)
+	ld	l, a
+	ld	a, (gCode2)
+	ld	h, a
+	and	l
+	ret	nz
+;same sector
+
+	ld	a, h
+	or	l
+	jr	nz, _gStillClip
+	;Line(gX0,gY0,gX1,gY1)
+	ld	hl, (gX0)
+	push	hl
+	ld	hl, (gY0)
+	push	hl
+	ld	hl, (gX1)
+	push	hl
+	ld	hl, (gY1)	
+	call	sub_Line
+	ret
+_gStillClip:
+
+
+	ld	a, l
+	or	a
+	jr	nz, _gCodeOk
+	ld	a, h
+_gCodeOk:
+	ld	(gCurrCode), a   ; save a
+	
+	and	%00000100	;Bottom
+	jr	z, _gBottomSkip
+	ld	hl, 63
+	ld	de, (gY0)
+	sbc	hl, de
+	ex	de, hl
+	ld	hl, (gX1)
+	ld	bc, (gX0)
+	or	a
+	sbc	hl, bc
+	call	sub_Mul
+	ex	de, hl
+	ld	hl, (gY1)
+	ld	bc, (gY0)
+	or	a
+	sbc	hl, bc
+	ex	de, hl
+	call	sub_SDiv
+	ld	de, (gX0)
+	add	hl, de
+	ld	b, h
+	ld	c, l
+	ld	hl, 63
+	;bc = X, hl= Y
+	jp	_gEnd
+	
+_gBottomSkip:
+	ld	a, (gCurrCode)
+	
+	and	%00001000
+	jr	z, _gTopSkip
+	ld	hl, (gX0)
+	ld	de, (gX1)
+	sbc	hl, de
+	ld	de, (gY0)
+	call	sub_Mul
+	ex	de, hl
+	ld	hl, (gY1)
+	ld	bc, (gY0)
+	or	a
+	sbc	hl, bc
+	ex	de, hl
+	call	sub_SDiv
+	ld	de, (gX0)
+	add	hl, de
+	ld	b, h
+	ld	c, l
+	ld	hl, 0
+
+	; bc = x, hl = y
+	jp	_gEnd
+_gTopSkip:
+	ld	a, (gCurrCode)
+	and	%00000010	;right
+	jr	z, _gCRightSkip
+	ld	hl, 95
+	ld	de, (gX0)
+	sbc	hl, de
+	ex	de, hl
+	ld	hl, (gY1)
+	ld	bc, (gY0)
+	or	a
+	sbc	hl, bc
+	call	sub_Mul
+	ex	de, hl
+	ld	hl, (gX1)
+	ld	bc, (gX0)
+	or	a
+	sbc	hl, bc
+	ex	de, hl
+	call	sub_SDiv
+	ld	de, (gY0)
+	add	hl, de
+	ld	bc, 95
+	;hl = y, bc=x
+	jp	_gEnd
+_gCRightSkip:
+	; left
+	ld	hl, (gY0)
+	ld	de, (gY1)
+	sbc	hl, de
+	ld	de, (gX0)
+	call	sub_Mul
+	ex	de, hl
+	ld	hl, (gX1)
+	ld	bc, (gX0)
+	or	a
+	sbc	hl, bc
+	ex	de, hl
+	call	sub_SDiv
+	ld	de, (gY0)
+	add	hl, de
+	ld	bc, 0
+	;hl=y, bc=x
+_gEnd:
+	ld	a, (gCurrCode)
+	ld	e, a
+	ld	a, (gCode1)
+	sub	e
+	jr	nz, _gSecondCode
+	ld	(gY0), hl
+	ld	(gX0), bc
+	call	_gOutCode
+	ld	(gCode1), a	
+	jp	_gClippingLoop
+_gSecondCode:
+	ld	(gY1), hl
+	ld	(gX1), bc
+	call	_gOutCode
+	ld	(gCode2), a			
+
+	jp	_gClippingLoop
+
+_gOutCode:
+	; top						;
+	ld	a, h				;4
+	rlca					;4
+	and	$01				;7
+; bottom					;
+	ld	de, 63			;10
+	ex	de, hl			;4
+	sbc	hl, de			;15
+	rl	h				;8
+	rla					;4
+; right					;
+	ld	hl, 95			;10
+	sbc	hl, bc			;15
+	rl	h				;8	
+	rla					;4
+; left					;
+	rl	b				;8
+	rla					;4
+	ret					;11
+						;116 T-States, 25 bytes
+_gCLineEnd:
+
+;31
+;gInFrustrum
+	.dw	_gInFrustrumEnd
+	.db	%00011111
+	.db	63h, 0Bh
+	.db	AXM_SUB
+	.db	AXM_2ARGS
+	.org	$0
+; Z<1 ?
+	ld	hl, (gPositionZ)
+	dec	hl
+	dec	hl
+	ld	a, h
+	rlca
+	and	$01
+; Z-Y<0 ?
+	inc	hl
+	inc	hl
+	ld	de, (gPositionY)
+	sbc	hl, de
+	ld	c, h
+	rl	c
+	rla
+	add	hl, de
+; Z+Y<0 ?
+	add	hl, de
+	ld	c, h
+	rl	c
+	rla
+	or	a
+	sbc	hl, de
+; Z-X<0 ?
+	ld	de, (gPositionX)
+	sbc	hl, de
+	ld	c, h
+	rl	c
+	rla
+	add	hl, de
+; Z+X<0 ?
+	add	hl, de
+	ld	c, h
+	rl	c
+	rla
+	ld	l, a
+	ld	h, 0
+	ret
+_gInFrustrumEnd:
+
+;32
+;gClipPolygon, internal
+	.dw	_gClipPolygonEnd
+	.db	%00011111
+	.db	0h,0h
+	.db	AXM_SUB
+	.db	AXM_0ARGS
+	.org	$0
+	xor	a
+	ld	(gEdgePoint), a
+	ld	(gReadIndex), a
+	ld	hl, gRasterTable
+	push	hl
+_gGeomClipLoop:
+	ld	hl, gReadIndex
+	ld	e, (hl)
+	ld	d, 0
+	inc	(hl)
+	ld	hl ,(gVertexIndex)
+	add	hl, de
+	ld	a, (hl)
+	ld	c, a
+	ld	b, 0
+	push	bc
+; test for modulate cliping
+	ld	a, (gVerticesIn)
+	dec	a
+	jr	nz, _gNotLastVertex
+	ld	hl ,(gVertexIndex)
+	ld	a, (hl)
+	ld	l, a
+	ld	h, 0
+	jp	_gStartClip
+_gNotLastVertex:
+	inc	hl
+	ld	a, (hl)
+	ld	l, a
+	ld	h, 0
+_gStartClip:
+	call	sub_gClip3D
+; test if clip succeed
+	ld	a, l
+	or	h
+	jr	nz, _gLineOut
+	pop	de
+	dec	de
+	ld	a, (de)
+	ld	c, a
+	dec	de
+	ld	a, (de)
+	ld	b, a
+	inc	de
+	inc	de
+	ld	hl, (gLineX0)
+	or	a
+	sbc	hl, bc
+	jr	z, _gSecondPoint
+	ld	hl, gLineX0
+	ldi \ ldi	
+	ld	hl, gEdgePoint
+	inc	(hl)
+_gSecondPoint:
+	ld	hl, gLineX1
+	ldi \ ldi
+	ld	hl, gEdgePoint
+	inc	(hl)
+	push	de
+_gLineOut:
+	ld	hl, gVerticesIn
+	dec	(hl)
+	jp	nz, _gGeomClipLoop
+	pop	hl
+	dec	hl
+	dec	hl
+	ld	c, (hl)
+	inc	hl
+	ld	b, (hl)
+	ld	hl, (gRasterTable)
+	or	a
+	sbc	hl, bc
+	jr	nz, _gCopyLast
+	ld	hl, gEdgePoint
+	dec	(hl)
+_gCopyLast:
+	ld	a, (gEdgePoint)
+	or	a
+	ret	m
+	ld	l, a
+	ld	h, 0
+	ld	de, gRasterTable
+	add	hl, de
+	ex	de, hl
+	ldi \ ldi
+	ret
+_gClipPolygonEnd:
+
+	.dw	$0000
+
+; #HOOK
+; system
+	.dw	029Eh
+	.db	8
+	.db	"gInitLib"
+	.dw	02A0h
+	.db	12
+	.db	"gUseFastMath"
+	.dw	02A6h
+	.db	8
+	.db	"gEnable("
+	.dw	02A8h
+	.db	9
+	.db	"gDisable("
+; matrix
+	.dw	02B2h
+	.db	13
+	.db	"gLoadIdentity"
+	.dw	02B8h
+	.db	11
+	.db	"gLoadScale("
+	.dw	02BAh
+	.db	11
+	.db	"gPushMatrix"
+	.dw	02AAh
+	.db	10
+	.db	"gPopMatrix"
+	.dw	02ACh
+	.db	7
+	.db	"gAngle("
+	.dw	02AEh
+	.db	11
+	.db	"gTranslate("
+	.dw	2B0h
+	.db	11
+	.db	"gTranspose("
+; transform
+	.dw	02A2h
+	.db	8
+	.db	"gRotate("
+	.dw	02B4h
+	.db	8
+	.db	"gProject"
+	.dw	02A4h
+	.db	12
+	.db	"gFastRotate("
+	.dw	02B6h
+	.db	12
+	.db	"gFastProject"
+; other
+	.dw	02D6h
+	.db	7
+	.db	"gGetkey"
+; shader
+	.dw	02DEh
+	.db	14
+	.db	"gVertexShader("
+	.dw	02E0h
+	.db	12
+	.db	"gGeomShader("
+	.dw	02E4h
+	.db	4
+	.db	"gIn "
+	.dw	02E6h
+	.db	5
+	.db	"gOut "
+; vbo
+	.dw	02C6h
+	.db	8
+	.db	"gGenVBO("
+	.dw	02C8h
+	.db	10
+	.db	"gVBOParam("
+	.dw	02CAh
+	.db	9
+	.db	"gVBOData("
+	.dw	02CCh
+	.db	12
+	.db	"gVBOGetData("
+	.dw	02BEh
+	.db	10
+	.db	"gVBOPoint("
+	.dw	0304h
+	.db	11
+	.db	"gVBOVertex("
+	.dw	02CEh
+	.db	11
+	.db	"gVBOUpdate("
+; cliping
+	.dw	0328h
+	.db	11
+	.db	"gClip3DVec("
+	.dw	02D2h
+	.db	6
+	.db	"gLine("
+	.dw	032Ah
+	.db	11
+	.db	"gInFrustrum"
+; polygons (geometry shader)
+	.dw	02ECh
+	.db	13
+	.db	"gEndPrimitive"
